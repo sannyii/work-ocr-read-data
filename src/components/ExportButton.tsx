@@ -1,11 +1,11 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { BrandData } from '@/lib/doubao';
+import { BrandGroup } from '@/lib/doubao';
 import * as XLSX from 'xlsx';
 
 interface ExportButtonProps {
-    data: BrandData[];
+    data: BrandGroup[];
     date: string;
 }
 
@@ -18,18 +18,21 @@ export function ExportButton({ data, date }: ExportButtonProps) {
 
         // 准备所有数据的汇总表
         const summaryData: (string | number)[][] = [
-            ['品牌', '文章标题', '阅读数', '点赞数', '转发数']
+            ['品牌', '日期', '文章标题', '阅读数', '点赞数', '文章位置']
         ];
 
-        data.forEach(brandData => {
-            brandData.articles.forEach(article => {
-                summaryData.push([
-                    brandData.brand,
-                    article.title,
-                    article.reads,
-                    article.likes,
-                    article.shares ?? 0
-                ]);
+        data.forEach(brandGroup => {
+            brandGroup.cards.forEach(card => {
+                card.articles.forEach(article => {
+                    summaryData.push([
+                        brandGroup.brand,
+                        card.date,
+                        article.title,
+                        article.reads ?? 0,
+                        article.likes ?? 0,
+                        article.positionLabel || ''
+                    ]);
+                });
             });
         });
 
@@ -39,41 +42,46 @@ export function ExportButton({ data, date }: ExportButtonProps) {
         // 设置列宽
         summaryWs['!cols'] = [
             { wch: 15 },  // 品牌
+            { wch: 15 },  // 日期
             { wch: 60 },  // 标题
             { wch: 12 },  // 阅读数
             { wch: 10 },  // 点赞数
-            { wch: 10 },  // 转发数
+            { wch: 15 },  // 位置
         ];
 
         XLSX.utils.book_append_sheet(wb, summaryWs, '汇总');
 
         // 为每个品牌创建单独的工作表
-        data.forEach(brandData => {
+        data.forEach(brandGroup => {
             const brandSheetData: (string | number)[][] = [
-                ['序号', '文章标题', '阅读数', '点赞数', '转发数']
+                ['日期', '序号', '文章标题', '阅读数', '点赞数', '文章位置']
             ];
 
-            brandData.articles.forEach((article, index) => {
-                brandSheetData.push([
-                    index + 1,
-                    article.title,
-                    article.reads,
-                    article.likes,
-                    article.shares ?? 0
-                ]);
+            brandGroup.cards.forEach(card => {
+                card.articles.forEach((article, index) => {
+                    brandSheetData.push([
+                        card.date,
+                        index + 1,
+                        article.title,
+                        article.reads ?? 0,
+                        article.likes ?? 0,
+                        article.positionLabel || ''
+                    ]);
+                });
             });
 
             const brandWs = XLSX.utils.aoa_to_sheet(brandSheetData);
             brandWs['!cols'] = [
+                { wch: 15 },  // 日期
                 { wch: 6 },   // 序号
                 { wch: 60 },  // 标题
                 { wch: 12 },  // 阅读数
                 { wch: 10 },  // 点赞数
-                { wch: 10 },  // 转发数
+                { wch: 15 },  // 位置
             ];
 
             // 清理品牌名中的特殊字符作为工作表名
-            const sheetName = brandData.brand.replace(/[\\/?*[\]]/g, '').substring(0, 31);
+            const sheetName = brandGroup.brand.replace(/[\\/?*[\]]/g, '').substring(0, 31);
             XLSX.utils.book_append_sheet(wb, brandWs, sheetName);
         });
 

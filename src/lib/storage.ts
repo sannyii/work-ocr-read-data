@@ -1,10 +1,10 @@
 'use client';
 
-import { BrandData } from './doubao';
+import { BrandGroup } from './doubao';
 
 export interface DailyRecord {
     date: string; // YYYY-MM-DD
-    brands: BrandData[];
+    brands: BrandGroup[];
     createdAt: number;
     updatedAt: number;
 }
@@ -30,7 +30,7 @@ export function getRecordByDate(date: string): DailyRecord | null {
 }
 
 // 保存指定日期的记录
-export function saveRecord(date: string, brands: BrandData[]): DailyRecord {
+export function saveRecord(date: string, brands: BrandGroup[]): DailyRecord {
     const records = getAllRecords();
     const now = Date.now();
 

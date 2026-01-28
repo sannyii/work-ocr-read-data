@@ -4,43 +4,54 @@ export interface Article {
   title: string;
   reads: number;
   likes: number;
-  shares?: number;
+  positionLabel?: string;
 }
 
-export interface BrandData {
+export interface CardData {
   brand: string;
+  date: string;
   articles: Article[];
+  sourceLabel?: string; // e.g. "Little Green Book 1"
+  headlineRank?: number; // e.g. 1 for Headline 1
+}
+
+export interface BrandGroup {
+  brand: string;
+  cards: CardData[];
 }
 
 export interface OCRResult {
   success: boolean;
-  data?: BrandData;
+  data?: CardData[];
   error?: string;
 }
 
-const SYSTEM_PROMPT = `你是一个专业的图片数据提取助手。请分析微信公众号文章列表截图，提取以下信息：
+const SYSTEM_PROMPT = `你是一个专业的图片数据提取助手。请分析微信公众号文章列表截图，这是一个包含多个推送卡片（Card）的列表。请识别每个卡片的信息，提取以下内容：
 
-1. 品牌名称：图片左上角的公众号名称
-2. 所有文章的：标题、阅读数、点赞数、转发数（如果有的话）
+1. 品牌名称：卡片顶部的公众号名称（如“量子位”、“新智元”）。
+2. 推送时间/日期：每个卡片上显示的日期时间（如“昨天”、“5分钟前”、“2023年10月20日”）。如果找不到具体日期，请根据上下文推断或标记为“未知日期”。
+3. 文章列表：该卡片下包含的所有文章。
 
-注意事项：
-- 阅读数格式可能是 "阅读3.0万" 或 "阅读7240"，请转换为数字（3.0万 = 30000）
-- 点赞数格式可能是 "赞86" 或 "赞3"
-- 转发数可能不存在
+对于每个文章，提取：
+- 标题
+- 阅读数：请转换为数字（如 "3.0万" -> 30000）
+- 点赞数：请转换为数字
 
-请严格按照以下 JSON 格式返回，不要包含其他任何文字：
+请严格按照以下 JSON 格式返回 List，不要包含其他任何文字：
 
-{
-  "brand": "公众号名称",
-  "articles": [
-    {
-      "title": "文章标题",
-      "reads": 7240,
-      "likes": 86,
-      "shares": 1
-    }
-  ]
-}`;
+[
+  {
+    "brand": "公众号名称",
+    "date": "昨天",
+    "articles": [
+      {
+        "title": "文章标题",
+        "reads": 7240,
+        "likes": 86
+      }
+    ]
+  }
+]`;
 
 export async function analyzeImage(base64Image: string): Promise<OCRResult> {
   const apiKey = process.env.DOUBAO_API_KEY;
@@ -78,7 +89,7 @@ export async function analyzeImage(base64Image: string): Promise<OCRResult> {
               },
               {
                 type: 'text',
-                text: `${SYSTEM_PROMPT}\n\n请分析这张微信公众号文章列表截图，提取品牌名称和所有文章数据。`
+                text: `${SYSTEM_PROMPT}\n\n请分析这张截图，将每个推送块作为一个独立的Object。请注意，一张图可能包含多个不同日期的推送。`
               }
             ]
           }
@@ -114,10 +125,17 @@ export async function analyzeImage(base64Image: string): Promise<OCRResult> {
         jsonStr = jsonMatch[1];
       }
 
-      const data = JSON.parse(jsonStr.trim()) as BrandData;
+      // 尝试解析为数组
+      let data = JSON.parse(jsonStr.trim());
+
+      // 兼容可能返回单个对象的情况
+      if (!Array.isArray(data)) {
+        data = [data];
+      }
+
       return {
         success: true,
-        data
+        data: data as CardData[]
       };
     } catch (parseError) {
       console.error('JSON parse error:', parseError, 'Content:', content);

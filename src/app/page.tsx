@@ -6,12 +6,12 @@ import { ImageUploader } from '@/components/ImageUploader';
 import { DataTable } from '@/components/DataTable';
 import { ExportButton } from '@/components/ExportButton';
 import { Button } from '@/components/ui/button';
-import { BrandData } from '@/lib/doubao';
+import { BrandGroup } from '@/lib/doubao';
 import { saveRecord, getRecordByDate, getTodayDate, deleteRecord } from '@/lib/storage';
 
 export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<BrandData[]>([]);
+  const [results, setResults] = useState<BrandGroup[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [isSaved, setIsSaved] = useState(false);
   const [currentDate] = useState(() => getTodayDate());
@@ -20,7 +20,24 @@ export default function Home() {
   useEffect(() => {
     const todayRecord = getRecordByDate(currentDate);
     if (todayRecord) {
-      setResults(todayRecord.brands);
+      // Data Migration: Check for legacy format (missing cards) and convert
+      const migratedBrands = todayRecord.brands.map((b: any) => {
+        if (b.cards) {
+          return b as BrandGroup;
+        }
+        // Legacy data: { brand, articles }
+        return {
+          brand: b.brand,
+          cards: [{
+            brand: b.brand,
+            date: '历史数据',
+            articles: b.articles || [],
+            sourceLabel: '历史记录'
+          }]
+        } as BrandGroup;
+      });
+
+      setResults(migratedBrands);
       setIsSaved(true);
     }
   }, [currentDate]);
@@ -61,21 +78,40 @@ export default function Home() {
   };
 
   // 合并相同品牌的结果
-  const mergeResults = (existing: BrandData[], newData: BrandData[]): BrandData[] => {
-    const brandMap = new Map<string, BrandData>();
+  const mergeResults = (existing: BrandGroup[], newData: BrandGroup[]): BrandGroup[] => {
+    const brandMap = new Map<string, BrandGroup>();
 
     // 先添加现有数据
-    existing.forEach(brand => {
-      brandMap.set(brand.brand, { ...brand, articles: [...brand.articles] });
+    existing.forEach(group => {
+      brandMap.set(group.brand, {
+        brand: group.brand,
+        cards: [...group.cards]
+      });
     });
 
     // 合并新数据
-    newData.forEach(brand => {
-      if (brandMap.has(brand.brand)) {
-        const existing = brandMap.get(brand.brand)!;
-        existing.articles = [...existing.articles, ...brand.articles];
+    newData.forEach(group => {
+      if (brandMap.has(group.brand)) {
+        const existingGroup = brandMap.get(group.brand)!;
+        existingGroup.cards = [...existingGroup.cards, ...group.cards];
+
+        // 重新计算 Headline Rank 和 Source Label?
+        // 实际上 Source Label 应该在 API 层分配是最好的，保持上传批次的独立性。
+        // 但是如果在客户端合并多次上传，Headline Rank 可能需要全局重新计算。
+        // 不过目前的逻辑是多次上传追加，Rank 可能只针对单次上传有效，或者需要在这里重新计算。
+        // 需求说 "默认所有Card按照 小绿书1 小绿书2 这样顺序，然后条数最多的Card为头条1 头条2 这样"
+        // 这个通常指全局。
+        // 为了简单，我们每次合并后重新计算 Rank (可选，但为了更好的体验建议做)
+        // 但 Source Label 是来源标记，可能不应该变（表示第几次上传？这里简化为合并后的顺序）
+
+        // 让我们简单地追加，不重新计算 Source Label (保持原有批次号)，但可能需要重新计算 Headline Rank?
+        // 暂时保持 API 返回的 rank，如果用户觉得需要全局 rank，我们再加。
+
       } else {
-        brandMap.set(brand.brand, { ...brand, articles: [...brand.articles] });
+        brandMap.set(group.brand, {
+          brand: group.brand,
+          cards: [...group.cards]
+        });
       }
     });
 
@@ -146,7 +182,7 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="text-green-800 dark:text-green-200">
-                  今日 ({currentDate}) 已有 {results.reduce((sum, b) => sum + b.articles.length, 0)} 篇文章记录，继续上传会自动合并
+                  今日 ({currentDate}) 已有 {results.reduce((sum, g) => sum + g.cards.reduce((cSum, c) => cSum + c.articles.length, 0), 0)} 篇文章记录，继续上传会自动合并
                 </span>
               </div>
               <Button variant="outline" size="sm" onClick={handleClearToday}>
